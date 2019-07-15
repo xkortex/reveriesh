@@ -20,6 +20,7 @@ def get_version(pkg_name):
 packages = find_packages()
 
 deps = [
+    'ubelt'
 ]
 
 setup(
