@@ -1,5 +1,6 @@
 class SIG_REVERIESH(object):
     KILL = 'SIG_REVERIESH_KILL'.encode()
+    RESTART = 'SIG_REVERIESH_RESTART'.encode()
     PROMPT = 'SIG_REVERIESH_PROMPT'.encode()
 
 

